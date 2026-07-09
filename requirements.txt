@@ -1,0 +1,6 @@
+pandas
+openpyxl
+numpy
+scikit-learn
+pyarrow
+fastparquet

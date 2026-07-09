@@ -1,0 +1,48 @@
+﻿# DATA - never commit real business data, regardless of pseudonymization status
+data/
+logs/
+*.csv
+*.xlsx
+*.xlsm
+*.json
+!requirements.txt
+
+# CREDENTIALS / SECRETS
+.env
+.aws/
+*.pem
+*.key
+credentials
+config/secrets.py
+
+# PYTHON
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.Python
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# JUPYTER
+.ipynb_checkpoints/
+
+# EDITORS / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# MISC
+*.tmp
+*.bak
+*.ipynb
