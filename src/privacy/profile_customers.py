@@ -1,26 +1,13 @@
 """
 src/privacy/profile_customers.py
 
-Stage: build the current universe of unique customer *versions*
+Stage: build the current universe of unique customers
 (customer_mapping_base.csv) from the latest standardized order history
-file.
+file, keyed on a hashed composite of source_customer_code,
+ship_to_customer_code, and customer_name.
 
-SCD Type 2 design:
-- customer_hash_key: DURABLE identity, built from source_customer_code +
-  ship_to_customer_code only. Never changes for a given real customer.
-- customer_version_key: built from source_customer_code +
-  ship_to_customer_code + customer_name. Changes whenever the customer's
-  name changes — that's what customer_mapping_pipeline.py uses to detect
-  a new version needing a new SCD2 row.
-- first_observed_date: the earliest order_date seen for this exact
-  version, used as effective_date downstream. This is a real business
-  date, not a pipeline-processing timestamp.
-
-Output contract:
+Output contract (unchanged):
     data/metadata/customer_mapping_base.csv
-        columns: customer_version_key, customer_hash_key,
-                 source_customer_code, ship_to_customer_code,
-                 customer_name, first_observed_date
 """
 
 from __future__ import annotations
@@ -54,7 +41,6 @@ logging.basicConfig(
 logger = logging.getLogger("profile_customers")
 
 IDENTITY_COLUMNS = ["source_customer_code", "ship_to_customer_code", "customer_name"]
-REQUIRED_COLUMNS = IDENTITY_COLUMNS + ["order_date"]
 
 
 # ---------------------------------------------------------------------------
@@ -83,10 +69,6 @@ def atomic_write_csv(df: pd.DataFrame, output_file: Path) -> None:
     os.replace(tmp_file, output_file)
 
 
-def md5_of(*parts: str) -> str:
-    return hashlib.md5("|".join(parts).encode()).hexdigest()
-
-
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
@@ -112,7 +94,7 @@ def main() -> int:
 
         logger.info(f"Loaded rows: {len(df):,}")
 
-        missing_columns = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+        missing_columns = [c for c in IDENTITY_COLUMNS if c not in df.columns]
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
 
@@ -120,61 +102,50 @@ def main() -> int:
         if duplicate_input_cols:
             raise ValueError(f"Input file has duplicate column names: {duplicate_input_cols}")
 
-        # A blank/NaN value in either identifying field would otherwise
-        # become the literal string "nan" after astype(str), silently
-        # merging unrelated customers into a single hashed identity.
-        rows_with_null_identity = df[
-            ["source_customer_code", "ship_to_customer_code"]
-        ].isna().any(axis=1).sum()
+        # A blank/NaN value in any identity field would otherwise become the
+        # literal string "nan" after astype(str), silently merging unrelated
+        # customers with missing data into a single hashed identity. Fail
+        # loudly instead so the source data issue gets fixed at the root.
+        null_counts = df[IDENTITY_COLUMNS].isna().sum()
+        rows_with_null_identity = df[IDENTITY_COLUMNS].isna().any(axis=1).sum()
         if rows_with_null_identity > 0:
             raise ValueError(
-                f"{rows_with_null_identity:,} row(s) have a null "
-                f"source_customer_code or ship_to_customer_code, which would "
-                f"corrupt customer hashing if allowed through."
+                f"{rows_with_null_identity:,} row(s) have a null value in one "
+                f"or more customer identity fields, which would corrupt "
+                f"customer hashing if allowed through:\n{null_counts}"
             )
         logger.info("Customer identity null check passed.")
 
         for col in IDENTITY_COLUMNS:
             df[col] = df[col].astype(str).str.strip().str.upper()
 
-        # order_date arrives as a legacy-style integer, e.g. 20260101.
-        parsed_dates = pd.to_datetime(df["order_date"], format="%Y%m%d", errors="coerce")
-        unparseable = parsed_dates.isna().sum()
-        if unparseable > 0:
-            raise ValueError(
-                f"{unparseable:,} row(s) have an order_date that could not be "
-                f"parsed as YYYYMMDD. Check the source data before continuing."
-            )
-        df["_order_date_parsed"] = parsed_dates
-
-        df["customer_hash_key"] = df.apply(
-            lambda r: md5_of(r["source_customer_code"], r["ship_to_customer_code"]), axis=1
+        df["customer_business_key"] = (
+            df["source_customer_code"]
+            + "|"
+            + df["ship_to_customer_code"]
+            + "|"
+            + df["customer_name"]
         )
-        df["customer_version_key"] = df.apply(
-            lambda r: md5_of(r["source_customer_code"], r["ship_to_customer_code"], r["customer_name"]),
-            axis=1,
+
+        df["customer_hash_key"] = df["customer_business_key"].apply(
+            lambda x: hashlib.md5(x.encode()).hexdigest()
         )
 
         customer_base = (
-            df.groupby("customer_version_key")
-            .agg(
-                customer_hash_key=("customer_hash_key", "first"),
-                source_customer_code=("source_customer_code", "first"),
-                ship_to_customer_code=("ship_to_customer_code", "first"),
-                customer_name=("customer_name", "first"),
-                first_observed_date=("_order_date_parsed", "min"),
-            )
-            .reset_index()
-            .sort_values("customer_version_key")
+            df[[
+                "customer_hash_key",
+                "source_customer_code",
+                "ship_to_customer_code",
+                "customer_name",
+            ]]
+            .drop_duplicates(subset=["customer_hash_key"])
+            .sort_values("customer_hash_key")
         )
-
-        customer_base["first_observed_date"] = customer_base["first_observed_date"].dt.strftime("%Y-%m-%d")
 
         output_file = METADATA_DIR / "customer_mapping_base.csv"
         atomic_write_csv(customer_base, output_file)
 
-        logger.info(f"Exported {len(customer_base):,} unique customer version(s)")
-        logger.info(f"Distinct customer identities (customer_hash_key): {customer_base['customer_hash_key'].nunique():,}")
+        logger.info(f"Exported {len(customer_base):,} unique customer records")
         logger.info(str(output_file))
 
         return 0

@@ -1,7 +1,7 @@
 """
 src/run_script/run_pipeline.py
 
-Production orchestrator for the Order Intelligence pipeline:
+Production orchestrator for the legacy ERP Order Intelligence pipeline:
 Excel -> CSV -> Standardize -> Pseudonymize (customer/product/SKU) ->
 Quality Gate -> S3 Upload.
 
@@ -107,12 +107,30 @@ STAGES: list[Stage] = [
     # since pseudonymize_open_orders depends on the customer/product/SKU
     # mappings built during map_customers/map_products/map_skus above. ---
     Stage("standardize_open_orders", "standardization/standardize_open_orders_columns.py"),
+    Stage("add_open_orders_products", "privacy/add_open_orders_only_products.py"),
+    Stage("add_open_orders_customers", "privacy/add_open_orders_only_customers.py"),
     Stage("pseudonymize_open_orders", "privacy/pseudonymize_open_orders.py"),
     Stage("validate_open_orders", "privacy/validate_pseudonymize_open_orders.py", critical=False),
     Stage("quality_gate_open_orders", "quality/data_quality_gate_open_orders.py"),
     Stage(
         "upload_open_orders_s3",
         "cloud/upload_open_orders_to_s3.py",
+        retryable=True,
+        max_retries=3,
+        timeout=UPLOAD_TIMEOUT,
+    ),
+    # --- Inventory track. Runs after order history's product/SKU mapping
+    # stages, since pseudonymize_inventory depends on them. Independent of
+    # the open orders track (no shared dependency between the two). ---
+    Stage("ingest_inventory", "ingestion/ingest_inventory.py"),
+    Stage("standardize_inventory", "standardization/standardize_inventory_columns.py"),
+    Stage("add_inventory_products", "privacy/add_inventory_only_products.py"),
+    Stage("pseudonymize_inventory", "privacy/pseudonymize_inventory.py"),
+    Stage("validate_inventory", "privacy/validate_pseudonymize_inventory.py", critical=False),
+    Stage("quality_gate_inventory", "quality/data_quality_gate_inventory.py"),
+    Stage(
+        "upload_inventory_s3",
+        "cloud/upload_inventory_to_s3.py",
         retryable=True,
         max_retries=3,
         timeout=UPLOAD_TIMEOUT,
@@ -280,7 +298,7 @@ def verify_scripts_exist(stages: list[Stage], logger: logging.Logger) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the order intelligence pipeline.")
+    parser = argparse.ArgumentParser(description="Run the legacy ERP order intelligence pipeline.")
     parser.add_argument("--list", action="store_true", help="List configured stages and exit.")
     parser.add_argument("--from", dest="from_stage", default=None, help="Resume from this stage name (inclusive).")
     parser.add_argument("--to", dest="to_stage", default=None, help="Stop after this stage name (inclusive).")

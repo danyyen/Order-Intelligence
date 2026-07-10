@@ -1,21 +1,16 @@
 # Order Intelligence Pipeline
 
-A production-grade data pipeline that ingests order history from a legacy system, pseudonymizes sensitive fields, validates data quality, and lands the result in S3 — built as the foundation for a full analytics engineering platform (Snowflake → dbt → BI/ML).
+## Why this exists
 
-> **Note on data:** this repository contains pipeline code only. No real business data, customer information, or company data is included or referenced. All examples and screenshots use pseudonymized or synthetic values.
+Order history/Open Orders/Inventory data live in legacy system. Getting data out of it means someone manually running an export to Excel. There's no API, no direct database connection, nothing scheduled. That export contains real customer names, real product identifiers, and real employee usernames sitting in plain columns next to order amounts and delivery routes.
 
----
+I wanted to build real analytics on top of this data — the kind of thing that eventually turns into dashboards, demand forecasting, maybe an ML layer — without any of that flowing through in the clear to whoever ends up touching it downstream. That's the actual reason this pipeline pseudonymizes customer names, product descriptions, and SKU codes before anything leaves the local machine: it's not a portfolio decoration, it's the actual constraint I was working under.
 
-## The problem
+This repo is the first real piece of that: get the export in reliably, strip the sensitive fields consistently across every run, check the output isn't garbage before it goes anywhere, and land it in S3. Everything after that — a real warehouse, dbt models, BI, ML — is later work, not built yet.
 
-Order history lives in a legacy system and is exported manually as Excel. Before this data can be used for analytics, BI, or ML — by people or tools that shouldn't see real customer names, product identifiers, or employee data — it needs to be:
+**What's in this repo:** pipeline code only. No real business data, no real customer information, nothing that traces back to an actual person or company. The data files themselves are excluded — see `.gitignore`.
 
-1. Extracted reliably, on a recurring (weekly) basis
-2. Pseudonymized, so downstream consumers never see real customer/product identities
-3. Quality-checked, so bad data never silently reaches production
-4. Delivered to cloud storage in a structured, auditable way
-
-This repo is the pipeline that does that.
+For the reasoning behind specific design choices, the things that didn't work on the first try, and how I actually know this pipeline does what it claims — see **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 
 ---
 
@@ -35,90 +30,56 @@ flowchart TD
     I --> J[Validate output]
     I --> K[Data quality gate]
     K -->|passed| L[Upload to S3]
-    K -->|failed| M[Pipeline stops — no upload]
+    K -->|failed| M[Pipeline stops, nothing uploads]
+    F --> N[Pseudonymize open orders]
+    H --> N
+    N --> O[Validate + quality gate]
+    O --> P[Upload to S3]
 ```
 
-Every stage is a standalone, independently runnable Python script. `run_pipeline.py` orchestrates them end to end, but any stage can be run, tested, or debugged on its own.
+Order history and open orders run as two tracks through the same pipeline, but they're not independent — open orders reuses the exact same customer/product/SKU pseudonym mappings that order history builds, so a customer resolves to the same fake identity in both datasets. That means open orders can't be pseudonymized until order history's mapping stages have already run; the orchestrator runs order history's full track to completion first, then runs open orders on top of it.
+
+Every stage is a standalone script that reads whatever the previous stage's latest output is and writes its own output — the filesystem is the interface between stages, not shared in-memory state. That makes each stage independently runnable and debuggable on its own.
+
+`run_pipeline.py` orchestrates all of it as subprocesses — not a scheduler, not a DAG engine, just a script that runs each stage in order, logs everything, and stops on the first critical failure. Why not Airflow yet, why pseudonymization is incremental rather than rebuilt each run, and a few other real design calls are covered in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ---
 
-## Key engineering decisions
+## Reproducibility
 
-**Incremental pseudonymization, not full rebuilds.** Customer, product, and SKU mappings are built incrementally — every run preserves every pseudo-ID ever assigned and only generates new ones for genuinely new entities. This matters because downstream analytics depends on `Customer CUST-000123` meaning the same real customer forever, across every batch.
+This repo doesn't include real data, so running it end-to-end requires your own AS/400-shaped export — or a synthetic one matching the column structure in `config/column_mapping.py` / `config/column_mapping_open_orders.py`.
 
-**Idempotency guards at ingestion.** The pipeline refuses to re-ingest an unchanged source file (via content hashing), preventing accidental duplicate batches from a re-run or a scheduler firing twice.
-
-**A quality gate that's actually load-bearing.** `data_quality_gate.py` runs required-column, null, pseudonymization-format, and row-hash checks, and writes a structured report. Failing checks raise a non-zero exit — which stops the orchestrator before the upload stage runs. `upload_pseudonymized_to_s3.py` independently re-checks the same quality report and the batch-ID linkage before uploading, so the gate can't be silently bypassed by running the upload stage on its own.
-
-**Atomic writes everywhere.** Every stage writes to a temp file and renames it into place, so a crash mid-write can never leave a corrupted file at a path a downstream stage will pick up.
-
-**A durable identity vs. a mutable attribute.** Early on, the customer identity key included the customer's *name* — meaning a routine name correction (typo fix, legal rename) would silently fork a "new" customer with a new pseudo ID, breaking continuity. This was found, and rearchitected as a proper SCD Type 2 dimension: identity is keyed on stable business codes only, with name changes tracked as versioned history against a stable pseudo ID.
-
-**Every stage was smoke-tested, not just reviewed.** Several real bugs were caught this way during development — a pandas merge column-collision that only manifested on the second incremental run, a batch-ID linkage regression that would have permanently blocked S3 uploads, and a version of the upload script that didn't check the quality gate's result at all before uploading. All were caught and fixed before reaching production.
-
----
-
-## Pipeline stages
-
-| Stage | Script | Purpose |
-|---|---|---|
-| 1 | `ingestion/excel_to_csv_pipeline.py` | Excel → per-sheet CSV, with idempotency + schema validation |
-| 2 | `standardization/standardize_order_columns.py` | Renames  column codes to meaningful names; fails loudly on schema drift |
-| 3 | `privacy/profile_customers.py` | Extracts the current universe of unique customers |
-| 4 | `privacy/customer_mapping_pipeline.py` | Assigns/preserves pseudo customer identities |
-| 5 | `privacy/product_profile.py` | Extracts the current universe of unique products |
-| 6 | `privacy/pseudonymize_products.py` | Assigns/preserves pseudo product categories & descriptions |
-| 7 | `privacy/sku_mapping_pipeline.py` | Assigns/preserves pseudo SKU codes |
-| 8 | `privacy/pseudonymize_order_history.py` | Joins all mappings onto order history; replaces every sensitive field |
-| 9 | `privacy/validate_pseudonymize_order_history.py` | Secondary sanity check (non-blocking) |
-| 10 | `quality/data_quality_gate.py` | Full quality check suite; blocks the pipeline on failure |
-| 11 | `cloud/upload_pseudonymized_to_s3.py` | Final upload, gated on quality status + batch-ID match |
-
-Orchestrated by `run_script/run_pipeline.py`.
-
----
-
-## Running it
-
-```bash
-# See the execution plan without running anything
-python src/run_script/run_pipeline.py --list
-python src/run_script/run_pipeline.py --dry-run
-
-# Full run, excel to S3 (requires S3_BUCKET env var)
-python src/run_script/run_pipeline.py
-
-# Run a subset (e.g. everything except the actual upload)
-python src/run_script/run_pipeline.py --to quality_gate
-
-# Resume from a specific stage after fixing an issue
-python src/run_script/run_pipeline.py --from pseudonymize_orders
+**Requirements:**
+```
+Python 3.9+ (3.10+ recommended — boto3 drops 3.9 support in April 2026)
+pip install -r requirements.txt
+AWS CLI configured with credentials that can write to your target S3 bucket
 ```
 
-Required environment variables before running the upload stage:
-```bash
-export S3_BUCKET="your-bucket-name"
-export S3_PREFIX="order-intelligence"   # optional
-export AWS_REGION="us-east-1"                  # optional
+**Environment variables** (required before the upload stages will run):
+```powershell
+$env:S3_BUCKET = "your-bucket-name"
+$env:S3_PREFIX = "order-intelligence"   # optional, this is already the default
+$env:AWS_REGION = "us-east-1"            # optional, this is already the default
 ```
 
----
+**Running it:**
+```powershell
+# See the plan without running anything
+python src\run_script\run_pipeline.py --list
+python src\run_script\run_pipeline.py --dry-run
 
-## Tech stack
+# Full run, both order history and open orders tracks, through to S3
+python src\run_script\run_pipeline.py
 
-Python · pandas · boto3 · AWS S3
+# Everything except the actual S3 upload — safest way to validate a change
+python src\run_script\run_pipeline.py --to quality_gate_open_orders
 
----
+# Resume from a specific stage after fixing something
+python src\run_script\run_pipeline.py --from pseudonymize_orders
+```
 
-## Roadmap
-
-This pipeline is the ingestion/landing layer of a larger analytics engineering platform. Planned next:
-
-- **Snowflake** — staging + curated layers on top of the S3 landing zone
-- **dbt** — incremental models using the already-computed `row_hash` for change detection on the fact table, and `dbt snapshot` for proper SCD Type 2 dimension modeling
-- **Orchestration** — migrating `run_pipeline.py`'s stage logic into Airflow DAGs
-- **BI** — dashboards on top of the curated Snowflake layer
-- **ML/GenAI** — demand forecasting and a natural-language query layer over the curated data
+Each stage can also be run standalone (e.g. `python src\privacy\pseudonymize_order_history.py`) for debugging a single step without re-running everything ahead of it.
 
 ---
 
@@ -126,15 +87,24 @@ This pipeline is the ingestion/landing layer of a larger analytics engineering p
 
 ```
 src/
-├── ingestion/          # Excel -> CSV
-├── standardization/    # Column renaming/validation
-├── privacy/            # Pseudonymization stages
-├── quality/            # Data quality gate
-├── cloud/               # S3 upload
-└── run_script/          # Pipeline orchestrator
+├── ingestion/          Excel -> CSV
+├── standardization/    Column renaming/validation per dataset
+├── privacy/            Pseudonymization stages (customer, product, SKU, order history, open orders)
+├── quality/             Data quality gates
+├── cloud/                S3 upload
+└── run_script/           Pipeline orchestrator
 config/
-├── paths.py             # Single source of truth for all directory paths
-└── column_mapping.py    # column code -> readable name mapping
+├── paths.py                        Single source of truth for every directory path
+├── column_mapping.py               Order history: raw code -> readable name
+└── column_mapping_open_orders.py   Open orders: same idea, different raw schema
+docs/
+└── DECISIONS.md          Trade-offs, limitations, debugging notes, evaluation
 ```
 
-`data/` and `logs/` are excluded from this repository — see `.gitignore`.
+`data/` and `logs/` are excluded from this repository entirely — see `.gitignore`.
+
+---
+
+## What's next
+
+Inventory ingestion and pseudonymization, then a real warehouse layer (Snowflake), dbt models — including finally deploying the SCD2 customer dimension as a proper `dbt snapshot`, and incremental fact loading using the `row_hash` that's already being computed — then BI and ML on top of that. Separate work, separate write-up, when it exists.

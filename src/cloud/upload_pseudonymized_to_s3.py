@@ -95,7 +95,14 @@ def main() -> int:
             PSEUDONYMIZED_DIR, "order_history_pseudonymized_*.csv", "pseudonymized order file"
         )
         quality_file = find_latest(
-            QUALITY_DIR, "quality_report_*.json", "quality report"
+            # NOTE: pattern is deliberately "[0-9]*" not just "*" — the
+            # quality_reports folder is now shared with open orders
+            # (quality_report_open_orders_*.json) and inventory
+            # (quality_report_inventory_*.json). A bare "*" wildcard would
+            # match those too, and since sorted() sorts filenames as text
+            # (digits sort before letters), the wrong dataset's report
+            # could get picked as "latest" purely by alphabetical accident.
+            QUALITY_DIR, "quality_report_[0-9]*.json", "quality report"
         )
 
         order_batch_id = extract_batch_id(order_file)

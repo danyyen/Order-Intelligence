@@ -61,7 +61,7 @@ REQUIRED_PRODUCT_MAPPING_COLUMNS = [
     "pseudo_unique_sku_code",
 ]
 
-REQUIRED_CUSTOMER_MAPPING_COLUMNS = ["customer_hash_key", "pseudo_customer_name", "is_current"]
+REQUIRED_CUSTOMER_MAPPING_COLUMNS = ["customer_hash_key", "pseudo_customer_name"]
 
 HASH_COLUMNS = [
     "company_code",
@@ -119,21 +119,6 @@ def check_unique_key(df: pd.DataFrame, key_col: str, label: str) -> None:
             f"{' (truncated)' if len(dupes) > 20 else ''}. Every {key_col} "
             f"must be unique or the merge will silently multiply order rows."
         )
-
-
-def parse_bool_column(series: pd.Series) -> pd.Series:
-    """
-    Robustly parse a boolean column that may come back from CSV as actual
-    bools, or as the strings "True"/"False" — a naive .astype(bool) on
-    strings is a classic trap, since the non-empty string "False" is
-    truthy in Python.
-    """
-    if series.dtype == bool:
-        return series
-    return (
-        series.astype(str).str.strip().str.lower()
-        .map({"true": True, "false": False})
-    )
 
 
 def find_input_file(explicit_path: str | None) -> Path:
@@ -213,54 +198,34 @@ def main() -> int:
         check_required_columns(customer_mapping, REQUIRED_CUSTOMER_MAPPING_COLUMNS, "customer_mapping_final.csv")
         logger.info("Required column checks passed.")
 
-        # customer_mapping_final.csv is an SCD Type 2 table — customer_hash_key
-        # legitimately repeats across historical (non-current) versions of the
-        # same customer. Only the CURRENT version of each customer is relevant
-        # for pseudonymizing today's orders.
-        customer_mapping["is_current"] = parse_bool_column(customer_mapping["is_current"])
-        if customer_mapping["is_current"].isna().any():
-            raise ValueError(
-                "customer_mapping_final.csv has an is_current value that isn't "
-                "True/False. Check for corruption or manual edits."
-            )
-        customer_mapping_current = customer_mapping[customer_mapping["is_current"]].copy()
-
         # --- Guard against join fan-out from a corrupted mapping file ---
         check_unique_key(product_mapping, "full_sku_code", "product_mapping_final.csv")
-        check_unique_key(
-            customer_mapping_current, "customer_hash_key",
-            "customer_mapping_final.csv (current versions)",
-        )
+        check_unique_key(customer_mapping, "customer_hash_key", "customer_mapping_final.csv")
 
         # --- Clean product join key ---
         orders["full_sku_code"] = orders["full_sku_code"].astype(str).str.strip()
         product_mapping["full_sku_code"] = product_mapping["full_sku_code"].astype(str).str.strip()
 
         # --- Clean customer fields + create customer hash key ---
-        # customer_hash_key is the DURABLE identity — built from the two
-        # business codes only, NOT customer_name. A name change (typo fix,
-        # legal rename) must not fork the order into a "new" customer; that's
-        # exactly what SCD2 in customer_mapping_pipeline.py exists to handle.
         for col in ["source_customer_code", "ship_to_customer_code", "customer_name"]:
             orders[col] = orders[col].astype(str).str.strip().str.upper()
 
         rows_with_null_identity = orders[
-            ["source_customer_code", "ship_to_customer_code"]
+            ["source_customer_code", "ship_to_customer_code", "customer_name"]
         ].isna().any(axis=1).sum()
         if rows_with_null_identity > 0:
             raise ValueError(
-                f"{rows_with_null_identity:,} order row(s) have a null "
-                f"source_customer_code or ship_to_customer_code, which would "
-                f"corrupt customer hashing."
+                f"{rows_with_null_identity:,} order row(s) have a null customer "
+                f"identity field, which would corrupt customer hashing."
             )
 
-        orders["customer_hash_key"] = orders.apply(
-            lambda r: hashlib.md5(f"{r['source_customer_code']}|{r['ship_to_customer_code']}".encode()).hexdigest(),
-            axis=1,
+        orders["customer_business_key"] = (
+            orders["source_customer_code"] + "|" + orders["ship_to_customer_code"] + "|" + orders["customer_name"]
         )
-        customer_mapping_current["customer_hash_key"] = (
-            customer_mapping_current["customer_hash_key"].astype(str).str.strip()
+        orders["customer_hash_key"] = orders["customer_business_key"].apply(
+            lambda x: hashlib.md5(x.encode()).hexdigest()
         )
+        customer_mapping["customer_hash_key"] = customer_mapping["customer_hash_key"].astype(str).str.strip()
 
         # --- Merge product pseudonymization (category, description, all 3 SKU codes) ---
         orders_pseudo = orders.merge(
@@ -294,7 +259,7 @@ def main() -> int:
 
         # --- Merge customer pseudonymization ---
         orders_pseudo = orders_pseudo.merge(
-            customer_mapping_current[["customer_hash_key", "pseudo_customer_name"]],
+            customer_mapping[["customer_hash_key", "pseudo_customer_name"]],
             on="customer_hash_key",
             how="left",
         )
@@ -343,6 +308,7 @@ def main() -> int:
             "pseudo_full_sku_code",
             "pseudo_first_half_sku_code",
             "pseudo_unique_sku_code",
+            "customer_business_key",
             "customer_hash_key",
         ])
 
