@@ -16,7 +16,9 @@ For the reasoning behind specific design choices, the things that didn't work on
 
 ## Architecture
 
-![Pipeline architecture diagram](docs/images/architecture 1.jpg)
+## Architecture
+
+![Pipeline architecture diagram](docs/images/architecture_1.jpg)
 
 
 Order history and open orders run as two tracks through the same pipeline, but they're not independent — open orders reuses the exact same customer/product/SKU pseudonym mappings that order history builds, so a customer resolves to the same fake identity in both datasets. That means open orders can't be pseudonymized until order history's mapping stages have already run; the orchestrator runs order history's full track to completion first, then runs open orders on top of it.
