@@ -12,7 +12,7 @@ This repo is the first real piece of that: get the export in reliably, strip the
 
 For the reasoning behind specific design choices, the things that didn't work on the first try, and how I actually know this pipeline does what it claims — see **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 
----
+
 
 
 ## Architecture
@@ -26,7 +26,7 @@ Every stage is a standalone script that reads whatever the previous stage's late
 
 `run_pipeline.py` orchestrates all of it as subprocesses — not a scheduler, not a DAG engine, just a script that runs each stage in order, logs everything, and stops on the first critical failure. Why not Airflow yet, why pseudonymization is incremental rather than rebuilt each run, and a few other real design calls are covered in [docs/DECISIONS.md](docs/DECISIONS.md).
 
----
+
 
 ## Reproducibility
 
@@ -64,7 +64,7 @@ python src\run_script\run_pipeline.py --from pseudonymize_orders
 
 Each stage can also be run standalone (e.g. `python src\privacy\pseudonymize_order_history.py`) for debugging a single step without re-running everything ahead of it.
 
----
+
 
 ## Repository structure
 
@@ -86,7 +86,7 @@ docs/
 
 `data/` and `logs/` are excluded from this repository entirely — see `.gitignore`.
 
----
+
 
 ## What's next
 
