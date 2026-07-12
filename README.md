@@ -16,26 +16,8 @@ For the reasoning behind specific design choices, the things that didn't work on
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    A[Raw Excel export] --> B[Ingest: Excel to CSV]
-    B --> C[Standardize columns]
-    C --> D[Profile customers]
-    C --> E[Profile products]
-    D --> F[Map customers to pseudo IDs]
-    E --> G[Map products to pseudo categories]
-    G --> H[Map SKUs to pseudo codes]
-    F --> I[Pseudonymize order history]
-    H --> I
-    I --> J[Validate output]
-    I --> K[Data quality gate]
-    K -->|passed| L[Upload to S3]
-    K -->|failed| M[Pipeline stops, nothing uploads]
-    F --> N[Pseudonymize open orders]
-    H --> N
-    N --> O[Validate + quality gate]
-    O --> P[Upload to S3]
-```
+![Pipeline architecture diagram](docs/images/architecture 1.jpg)
+
 
 Order history and open orders run as two tracks through the same pipeline, but they're not independent — open orders reuses the exact same customer/product/SKU pseudonym mappings that order history builds, so a customer resolves to the same fake identity in both datasets. That means open orders can't be pseudonymized until order history's mapping stages have already run; the orchestrator runs order history's full track to completion first, then runs open orders on top of it.
 
