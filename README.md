@@ -14,7 +14,6 @@ For the reasoning behind specific design choices, the things that didn't work on
 
 ---
 
-## Architecture
 
 ## Architecture
 
