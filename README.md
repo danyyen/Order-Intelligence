@@ -74,7 +74,7 @@ None of this is ML based, it's straightforward assertions, but it's the differen
 
 More screenshots, including the stage status table and the before/after column comparison, are in [docs/images](docs/images).
 
-Order history pseudonymized and landed in S3 under its own partitioned path, batch ID matching the run that produced it. Bucket name blurred, everything else is real output from a real run against real data volume: order history sits around 553,000 rows, open orders around 4,500.
+Order history pseudonymized and landed in S3 under its own partitioned path, batch ID matching the run that produced it. Bucket name blurred, everything else is real output from a real run against real data volume: order history sits around 553,000 rows, open orders around 4,500 and inventory data around 5800 rows.
 
 ## Reproducibility
 
