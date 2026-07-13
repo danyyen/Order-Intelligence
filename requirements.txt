@@ -1,6 +1,3 @@
 pandas
 openpyxl
-numpy
-scikit-learn
-pyarrow
-fastparquet
+boto3
