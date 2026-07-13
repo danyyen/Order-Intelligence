@@ -34,13 +34,10 @@ Every stage is a standalone script that reads whatever the previous stage's late
 
 ## Proof of a real run
 
-![Pipeline output](docs/images/result_output.jpg)
-![Quality result](docs/images/quality_report.jpg)
+![Full Pipeline run](docs/images/result_output.jpg)
 ![Comparison result](docs/images/column_comparison_before_and_after.jpg)
 ![S3 result](docs/images/s3_landing.jpg)
-![Order result](docs/images/order_history_landing.jpg)
-![Open order result](docs/images/open_orders_landing.jpg)
-![Inventory result](docs/images/inventory_landing.jpg)
+More screenshots, including the stage status table and the before/after column comparison, are in [docs/images](docs/images).
 
 
 
