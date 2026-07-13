@@ -31,6 +31,22 @@ Every stage is a standalone script that reads whatever the previous stage's late
 
 
 
+
+## Proof of a real run
+
+![Pipeline output](docs/images/result_output.jpg)
+![Quality result](docs/images/quality_report.jpg)
+![Comparison result](docs/images/column_comparison_before_and_after.jpg)
+![S3 result](docs/images/s3_landing.jpg)
+![Order result](docs/images/order_history_landing.jpg)
+![Open order result](docs/images/open_orders_landing.jpg)
+![Inventory result](docs/images/inventory_landing.jpg)
+
+
+
+Order history pseudonymized and landed in S3 under its own partitioned path, batch ID matching the run that produced it. Bucket name blurred, everything else is real output from a real run against real data volume.
+
+
 ## Reproducibility
 
 The repo includes small synthetic samples, fewer than twenty rows per dataset, matching the real column structures. That's enough to clone this and actually run the full pipeline end to end without needing your own export. If you do have a real export in the same shape, the column mappings in `config/column_mapping.py`, `config/column_mapping_open_orders.py`, and `config/column_mapping_inventory.py` describe exactly what each script expects.
