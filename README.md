@@ -10,7 +10,9 @@ This repo is the first real piece of that. Get the export in reliably, strip the
 
 **What's in this repo:** pipeline code, plus small synthetic samples, fewer than twenty rows per dataset, so the pipeline can actually be run end to end without needing real business data. No real customer information and nothing that traces back to an actual person or company is included anywhere. The `.gitignore` excludes real data files by default.
 
-For the reasoning behind specific design choices, the things that didn't work on the first try, and how I actually know this pipeline does what it claims, see **[docs/DECISIONS.md](docs/DECISIONS.md)**.
+For the reasoning behind specific design choices, the things that didn't work on the first try, and how I actually know this pipeline does what it claims — see **[docs/DECISIONS.md](docs/DECISIONS.md)**.
+
+
 
 
 ## Architecture
@@ -26,6 +28,7 @@ From there, each of the three datasets runs its own pseudonymize, validate, qual
 Every stage is a standalone script that reads whatever the previous stage's latest output is and writes its own output. The filesystem is the interface between stages, not shared memory. That makes each stage independently runnable and debuggable on its own.
 
 `run_pipeline.py` orchestrates all of it as subprocesses, not a scheduler, not a DAG engine, just a script that runs each stage in order, logs everything, and stops on the first critical failure. This is meant to be a step toward Airflow, not a replacement for it. Once there's a real warehouse layer to coordinate against, the stage logic here should translate fairly directly into Airflow tasks. Why not Airflow yet, why pseudonymization is incremental rather than rebuilt each run, and a few other real design calls are covered in [docs/DECISIONS.md](docs/DECISIONS.md).
+
 
 
 ## Reproducibility
@@ -71,6 +74,7 @@ Order history and open orders identify a batch by an intraday identifier down to
 
 
 
+
 ## Repository structure
 
 ```
@@ -98,6 +102,7 @@ docs/
 
 
 
+
 ## What's next
 
-A real warehouse layer in Snowflake, dbt models, including finally deploying the SCD2 customer dimension as a proper dbt snapshot, and incremental fact loading using the row hash that's already being computed. Airflow for real scheduling once that warehouse layer exists to coordinate against. Then BI and machine learning on top of all of it. Separate work, separate write up, when it exists.
+A real warehouse layer (Snowflake), dbt models — including finally deploying the SCD2 customer dimension as a proper `dbt snapshot`, and incremental fact loading using the `row_hash` that's already being computed — then BI and ML on top of that. Separate work, separate write-up, when it exists.
