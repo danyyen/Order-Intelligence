@@ -8,7 +8,11 @@ open orders shares the same customer/product/SKU universe.
 
 IMPORTANT COUPLING: this builds the customer identity key the same way
 the CURRENTLY LIVE pseudonymize_order_history.py does today
-(source_customer_code + ship_to_customer_code + customer_name).
+(source_customer_code + ship_to_customer_code + customer_name), NOT the
+SCD Type 2 version (source+ship only) designed separately. SCD2 has been
+deferred, not deployed. If/when SCD2 is deployed for order history, this
+script must be updated in lockstep, or it will silently mis-join against
+a customer_mapping_final.csv it no longer understands.
 
 Open orders has no product_category field in the source at all (unlike
 order history). pseudo_category from the product mapping is added as a
@@ -182,7 +186,9 @@ def main() -> int:
             )
 
         orders = pd.read_csv(input_file)
-        product_mapping = pd.read_csv(product_mapping_file)
+        # product_mapping has no numeric columns - dtype=str avoids pandas
+        # silently stripping leading zeros from numeric-looking SKU codes.
+        product_mapping = pd.read_csv(product_mapping_file, dtype=str)
         customer_mapping = pd.read_csv(customer_mapping_file)
 
         logger.info(f"Loaded open orders rows: {len(orders):,}")
@@ -317,18 +323,10 @@ def main() -> int:
         orders_pseudo["product_category"] = orders_pseudo["pseudo_category"]
         orders_pseudo["product_category_derived"] = True
 
-        orders_pseudo = orders_pseudo.drop(columns=[
-            "pseudo_product_description",
-            "pseudo_category",
-            "pseudo_customer_name",
-            "pseudo_full_sku_code",
-            "pseudo_first_half_sku_code",
-            "pseudo_unique_sku_code",
-            "customer_business_key",
-            "customer_hash_key",
-        ])
-
         # --- Row hash (for future incremental loading, same convention as order history) ---
+        # Computed BEFORE the final drop below, deliberately, so it still
+        # reflects source_customer_code/ship_to_customer_code even though
+        # those raw columns will not survive into the final exported file.
         available_hash_columns = [c for c in HASH_COLUMNS if c in orders_pseudo.columns]
         missing_hash_columns = [c for c in HASH_COLUMNS if c not in orders_pseudo.columns]
         if missing_hash_columns:
@@ -341,6 +339,25 @@ def main() -> int:
             .apply(lambda x: hashlib.md5(x.encode()).hexdigest())
         )
         orders_pseudo["pseudonymized_at"] = datetime.now().isoformat()
+
+        # --- Final drop, the literal last step before export ---
+        # Intermediate helper columns, plus source_customer_code and
+        # ship_to_customer_code: real identifiers needed to build the hash
+        # and pseudo identity above, but never meant to survive into the
+        # file that actually reaches S3. created_by_user is already absent
+        # by this point, dropped at standardization.
+        orders_pseudo = orders_pseudo.drop(columns=[
+            "pseudo_product_description",
+            "pseudo_category",
+            "pseudo_customer_name",
+            "pseudo_full_sku_code",
+            "pseudo_first_half_sku_code",
+            "pseudo_unique_sku_code",
+            "customer_business_key",
+            "customer_hash_key",
+            "source_customer_code",
+            "ship_to_customer_code",
+        ])
 
         atomic_write_csv(orders_pseudo, output_file)
 

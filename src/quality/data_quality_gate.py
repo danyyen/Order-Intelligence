@@ -38,8 +38,6 @@ BATCH_ID_PATTERN = re.compile(r"(\d{8}_\d{6})")
 
 REQUIRED_COLUMNS = [
     "company_code",
-    "source_customer_code",
-    "ship_to_customer_code",
     "customer_name",
     "purchase_order_number",
     "order_number",

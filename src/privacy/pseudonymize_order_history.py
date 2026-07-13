@@ -300,19 +300,11 @@ def main() -> int:
         orders_pseudo["first_half_sku_code"] = orders_pseudo["pseudo_first_half_sku_code"]
         orders_pseudo["unique_sku_code"] = orders_pseudo["pseudo_unique_sku_code"]
 
-        # --- Drop temporary/sensitive helper columns ---
-        orders_pseudo = orders_pseudo.drop(columns=[
-            "pseudo_product_description",
-            "pseudo_category",
-            "pseudo_customer_name",
-            "pseudo_full_sku_code",
-            "pseudo_first_half_sku_code",
-            "pseudo_unique_sku_code",
-            "customer_business_key",
-            "customer_hash_key",
-        ])
-
         # --- Row hash for incremental loading ---
+        # Computed BEFORE the drop below, deliberately, so it still reflects
+        # source_customer_code/ship_to_customer_code (real, business
+        # meaningful change detection fields) even though those raw columns
+        # will not survive into the final exported file.
         available_hash_columns = [c for c in HASH_COLUMNS if c in orders_pseudo.columns]
         missing_hash_columns = [c for c in HASH_COLUMNS if c not in orders_pseudo.columns]
         if missing_hash_columns:
@@ -325,6 +317,25 @@ def main() -> int:
             .apply(lambda x: hashlib.md5(x.encode()).hexdigest())
         )
         orders_pseudo["pseudonymized_at"] = datetime.now().isoformat()
+
+        # --- Final drop, the literal last step before export ---
+        # Intermediate helper columns, plus source_customer_code,
+        # ship_to_customer_code, and created_by_user: real identifiers that
+        # were needed to build the hash and pseudo identity above, but were
+        # never meant to survive into the file that actually reaches S3.
+        orders_pseudo = orders_pseudo.drop(columns=[
+            "pseudo_product_description",
+            "pseudo_category",
+            "pseudo_customer_name",
+            "pseudo_full_sku_code",
+            "pseudo_first_half_sku_code",
+            "pseudo_unique_sku_code",
+            "customer_business_key",
+            "customer_hash_key",
+            "source_customer_code",
+            "ship_to_customer_code",
+            "created_by_user",
+        ])
 
         # --- Export ---
         atomic_write_csv(orders_pseudo, output_file)
