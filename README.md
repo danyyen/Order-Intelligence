@@ -1,6 +1,13 @@
 # Order Intelligence Pipeline
 
-A local first Python pipeline that ingests legacy AS400 Excel exports, pseudonymizes sensitive fields through shared identity mappings, validates data quality, and lands approved batches in S3. Snowflake, dbt, BI, and ML come next.
+A local first Python pipeline that ingests legacy Excel exports, pseudonymizes sensitive fields through shared identity mappings, validates data quality, and lands approved batches in S3. Snowflake, dbt, BI, and ML come next.
+
+#### Highlights
+- Synthetic datasets included for end-to-end execution
+- Fully reproducible without access to production data
+- No confidential customer or business data included in the repository
+
+**What's in this repo:** pipeline code, plus small synthetic samples, fewer than twenty rows per dataset, so the pipeline can actually be run end to end without needing real business data. The `.gitignore` excludes real data files by default.
 
 ## Status
 
@@ -21,22 +28,31 @@ A local first Python pipeline that ingests legacy AS400 Excel exports, pseudonym
 
 Order history, open orders, and inventory all live inside the same legacy business system. Getting any of it out means someone manually running an export to Excel. There's no API and no direct database connection, nothing scheduled. Each export contains real customer names, real product identifiers, and real employee usernames sitting in plain columns next to order amounts and delivery routes.
 
-I wanted to build real analytics on top of this data, the kind of thing that eventually turns into dashboards, demand forecasting, maybe a machine learning layer, without any of that flowing through in the clear to whoever ends up touching it downstream. That's the actual reason this pipeline pseudonymizes customer names, product descriptions, SKU codes, and employee usernames before anything leaves the local machine. It isn't a portfolio decoration. It's the actual constraint I was working under.
+I wanted to build real analytics on top of this data, the kind of thing that eventually turns into dashboards, demand forecasting, maybe a machine learning layer, without any of that flowing through in the clear to whoever ends up touching it downstream. That's the actual reason this pipeline pseudonymizes customer names, product descriptions, and SKU codes, and drops employee usernames entirely, before anything leaves the local machine. It isn't a portfolio decoration. I intentionally kept the stages file-based while validating the business rules. The filesystem acts as the interface between stages today; once a warehouse layer is introduced, those boundaries naturally become database tables instead of CSV outputs. Once Snowflake exists the interface naturally becomes tables instead of CSV outputs.
 
-This repo is the first real piece of that. Get the export in reliably, strip the sensitive fields consistently across every run, check the output isn't garbage before it goes anywhere, and land it in S3. Everything after that (a real warehouse, dbt models, BI, machine learning, eventually Airflow for scheduling) is later work, not built yet.
-
-**What's in this repo:** pipeline code, plus small synthetic samples, fewer than twenty rows per dataset, so the pipeline can actually be run end to end without needing real business data. No real customer information and nothing that traces back to an actual person or company is included anywhere. The `.gitignore` excludes real data files by default.
+This repo is the first real piece of that. Get the export in reliably, strip the sensitive fields consistently across every run, check the output isn't garbage before it goes anywhere, and land it in S3. Everything after that (a real warehouse, dbt models, BI, machine learning, eventually Airflow for scheduling) is later work, not built yet. 
 
 For the reasoning behind specific design choices, the things that didn't work on the first try, and how I actually know this pipeline does what it claims, see **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 
-## Privacy boundary
+## Tested Against
 
-Worth being precise about this instead of just saying "pseudonymized" and moving on.
+| Dataset | Scale |
+|---------|------:|
+| Order History | ~553,000 rows |
+| Open Orders | ~4,500 rows |
+| Inventory | ~5,800 rows |
+| Products | 947 |
+| Customers | 1,770 |
+These figures represent the largest real dataset processed during development. The repository includes only synthetic samples for reproducibility.
 
-- Customer names, product descriptions, SKU codes, and employee usernames are mapped to stable fake identifiers through the shared mapping tables, computed before any sensitive field is dropped.
-- Mappings live locally, never in the repo, never in S3. The `.gitignore` keeps them out by default.
-- Order number and purchase order number are left unmasked. They're non repeating transaction identifiers on their own, not personal or customer identifying.
-- This is pseudonymization, not anonymization. Order dates, routes, quantities, and amounts still travel downstream and can still be sensitive operational information, especially for low volume customer/product combinations where surrounding context might make an identity guessable. I'm not claiming this data is safe to hand to anyone; I'm claiming the direct identifiers are gone.
+## Proof of a real run
+
+![Full Pipeline run](docs/images/result_output.jpg)
+![Comparison result](docs/images/column_comparison_before_and_after.jpg)
+![S3 result](docs/images/s3_landing.jpg)
+
+More screenshots, including the stage status table and the before/after column comparison, are in [docs/images](docs/images).
+
 
 ## Architecture
 
@@ -50,9 +66,27 @@ From there, each of the three datasets runs its own pseudonymize, validate, qual
 
 On failure isolation, since this trips people up: a run is fail fast within a dataset's own track. If order history's quality gate fails, order history stops there and doesn't upload a bad batch. That does not take down open orders or inventory, those are separate subprocess chains and keep going on their own. What I mean by "independent" is dataset level, not stage level. You can also rerun a single dataset's track on its own with `--from`, without touching the other two.
 
-Every stage is a standalone script that reads whatever the previous stage's latest output is and writes its own output. The filesystem is the interface between stages, not shared memory. That makes each stage independently runnable and debuggable on its own.
+Every stage is a standalone script that reads whatever the previous stage's latest output is and writes its own output. **The filesystem is the interface between stages, not shared memory**. That makes each stage independently runnable and debuggable on its own. Each output row includes a deterministic row hash that will later support incremental warehouse loading.
 
 `run_pipeline.py` orchestrates all of it as subprocesses, not a scheduler, not a DAG engine, just a script that runs each stage in order, logs everything, and stops a given track on its first critical failure. This is meant to be a step toward Airflow, not a replacement for it. Once there's a real warehouse layer to coordinate against, the stage logic here should translate fairly directly into Airflow tasks. Why not Airflow yet, why pseudonymization is incremental rather than rebuilt each run, and a few other real design calls are covered in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+
+## Privacy boundary
+
+Worth being precise about this instead of just saying "pseudonymized" and moving on.
+- Customer names, product descriptions, and SKU codes are mapped to stable fake identifiers through the shared mapping tables, computed before any sensitive field is dropped. Employee usernames and internal constant fields (created_by_user, company_code) aren't pseudonymized at all, they're dropped outright inside the pseudonymization scripts themselves, since nothing downstream needs the raw values and there's no mapping table to ever leak.
+- Mappings live locally, never in the repo, never in S3. The `.gitignore` keeps them out by default.
+- This is pseudonymization, not anonymization. Order dates, routes, quantities, and amounts still travel downstream and can still be sensitive operational information, especially for low volume customer/product combinations where surrounding context might make an identity guessable. I'm not claiming this data is safe to hand to anyone; I'm claiming the direct identifiers are gone.  
+- Order number and purchase order number remain unchanged because, in this environment, they function as operational transaction identifiers rather than direct personal identifiers. Organizations with different privacy requirements may choose to pseudonymize these fields as well.
+
+#### Real Production-Sized Run
+
+- Processed approximately **553,000** order history rows
+- Processed approximately **4,500** open order rows
+- Processed approximately **5,800** inventory rows
+- Completed in approximately **2 minutes (124.07 seconds)**
+- Deterministically pseudonymized sensitive identifiers
+- Uploaded approved batches to Amazon S3
 
 ## Quality gates
 
@@ -66,15 +100,6 @@ Each dataset has its own gate, but broadly, a batch gets rejected if:
 
 None of this is ML based, it's straightforward assertions, but it's the difference between catching a broken export before it lands in S3 versus finding out three dashboards downstream.
 
-## Proof of a real run
-
-![Full Pipeline run](docs/images/result_output.jpg)
-![Comparison result](docs/images/column_comparison_before_and_after.jpg)
-![S3 result](docs/images/s3_landing.jpg)
-
-More screenshots, including the stage status table and the before/after column comparison, are in [docs/images](docs/images).
-
-Order history pseudonymized and landed in S3 under its own partitioned path, batch ID matching the run that produced it. Bucket name blurred, everything else is real output from a real run against real data volume: order history sits around 553,000 rows, open orders around 4,500 and inventory data around 5800 rows.
 
 ## Reproducibility
 
@@ -150,7 +175,7 @@ Being upfront about where this stands right now:
 - Mappings live in local files, not a transactional store. There's no locking, so two runs writing to the same mapping at once isn't handled.
 - No automated tests yet. Bugs so far have been caught through live test runs, not a test suite. That's next on the list, before Snowflake work goes much further.
 - Order history, open orders, and inventory can be exported at different times, so a single "pull" isn't a perfectly aligned snapshot across all three.
-- SCD2 for the customer dimension is designed and tested but deliberately deferred to a dbt snapshot rather than implemented here.
+- SCD2 for the customer dimension is designed and tested but deliberately deferred to a dbt snapshot rather than implemented here because Customer history is ultimately a warehouse concern rather than a landing-zone concern.
 
 ## What's next
 

@@ -2,7 +2,7 @@
 src/ingestion/ingest_inventory.py
 
 Stage: ingest the warehouse inventory snapshot Excel export into a
-tagged CSV. Unlike the main AS400 export, this is a separate source
+tagged CSV. Unlike the main Legacy ecosystem export, this is a separate source
 file entirely, with no intraday batch_id — inventory is a once-per-
 snapshot business event, so it's dated (YYYYMMDD) rather than
 timestamped to the minute. The filename must encode that date

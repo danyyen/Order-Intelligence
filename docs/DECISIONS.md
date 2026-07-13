@@ -3,6 +3,18 @@
 This is the deeper log behind [../README.md](../README.md) — the tradeoffs I made and why, what this pipeline genuinely can't do yet, what actually broke while building it, and how I know it works beyond "the script exited 0."
 
 
+## Design Decisions
+
+**Why subprocesses?** Isolation and standalone debuggability — each stage can crash, be killed, or be rerun alone without touching shared runtime state.
+
+**Why filesystem?** Every intermediate output is inspectable and reruns are safe by default — nothing downstream runs until the file it depends on actually exists.
+
+**Why pseudonymization before S3?** The boundary is my laptop, not an IAM policy — sensitive fields should never exist in cloud storage even for a second.
+
+**Why shared mappings?** One customer, one pseudo ID, everywhere — without a shared table, cross-dataset joins downstream would silently break.
+
+**Why defer SCD2?** It's designed and tested, but dimension versioning belongs in the warehouse layer — dbt snapshots do it natively, building it twice in Python would be wasted work.
+
 
 ## Tradeoffs
 
@@ -22,7 +34,7 @@ A few decisions that had a real alternative I considered and rejected, and why:
 
 **`order_number` and `purchase_order_number` are left unmasked, deliberately.** These aren't pseudonymized like customer names or SKUs. The actual privacy risk this pipeline defends against is a stable, repeated identifier that lets someone correlate records back to a real entity over time, which is why the customer codes matter enough to hash into the identity key. `order_number` is minted once per transaction and never reused; on its own it doesn't link to anything else. Masking it would cost real analytical value (order level joins, dedup, tracking) for no corresponding privacy benefit. `purchase_order_number` is customer assigned and carries a small theoretical risk if a customer's own numbering convention happened to embed something identifying. Low severity, and accepted as a documented residual risk rather than built around.
 
-**`company_code` and `created_by_user` were dropped, not pseudonymized.** Every row in the real data carries the same constant value. It isn't a meaningful analytical dimension, it's a fixed constant, so removing it entirely is simpler and more honest than pseudonymizing a column that never varies. `created_by_user` is a real employee username from the source system, which is personal data in its own right, separate from customer privacy entirely. The fix is to drop all three outright, since nothing downstream currently needs the raw values. They're removed inside the pseudonymization scripts themselves, not left in place and filtered out later, because the goal is to keep real identifiers from ever reaching S3 at all. Hiding them behind a later transformation while the raw values still sit in the landing zone wouldn't actually close the gap.
+**`company_code` and `created_by_user` were dropped, not pseudonymized.** Every row in the real data carries the same constant value. It isn't a meaningful analytical dimension, it's a fixed constant, so removing it entirely is simpler and more honest than pseudonymizing a column that never varies. `created_by_user` is a real employee username from the source system, which is personal data in its own right, separate from customer privacy entirely. The fix is to drop all both outright, since nothing downstream currently needs the raw values. They're removed inside the pseudonymization scripts themselves, not left in place and filtered out later, because the goal is to keep real identifiers from ever reaching S3 at all. Hiding them behind a later transformation while the raw values still sit in the landing zone wouldn't actually close the gap.
 
 
 

@@ -1,7 +1,7 @@
 """
 src/run_script/run_pipeline.py
 
-Production orchestrator for the legacy ERP Order Intelligence pipeline:
+Production orchestrator for the legacy Ecosystem Order Intelligence pipeline:
 Excel -> CSV -> Standardize -> Pseudonymize (customer/product/SKU) ->
 Quality Gate -> S3 Upload.
 
@@ -298,7 +298,7 @@ def verify_scripts_exist(stages: list[Stage], logger: logging.Logger) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the legacy ERP order intelligence pipeline.")
+    parser = argparse.ArgumentParser(description="Run the legacy Ecosystem order intelligence pipeline.")
     parser.add_argument("--list", action="store_true", help="List configured stages and exit.")
     parser.add_argument("--from", dest="from_stage", default=None, help="Resume from this stage name (inclusive).")
     parser.add_argument("--to", dest="to_stage", default=None, help="Stop after this stage name (inclusive).")

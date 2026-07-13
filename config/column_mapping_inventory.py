@@ -3,7 +3,7 @@ config/column_mapping_inventory.py
 
 Column mapping for the warehouse inventory snapshot Excel export.
 
-Unlike order_history/open_orders (AS400 exports with raw coded column
+Unlike order_history/open_orders (Legacy Ecosystem exports with raw coded column
 names), this source already has readable column headers — the mapping
 here is mostly about normalizing naming convention, not decoding codes.
 

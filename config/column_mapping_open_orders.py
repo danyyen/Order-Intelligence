@@ -1,7 +1,7 @@
 """
 config/column_mapping_open_orders.py
 
-Raw legacy ERP column codes -> readable names, specific to the "Open Orders"
+Raw legacy Ecosystem column codes -> readable names, specific to the "Open Orders"
 sheet. This is intentionally separate from column_mapping.py (order
 history) because several raw codes here don't exist in that mapping,
 and a couple of shared-looking codes (orpswt, orpamt) mean the same

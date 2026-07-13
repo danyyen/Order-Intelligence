@@ -143,7 +143,7 @@ def main() -> int:
 
         inventory = pd.read_csv(input_file, dtype=str)
         # Read as all-string: first_half_sku_code/unique_sku_code are
-        # numeric-looking AS400 codes (e.g. "004030") — pandas' automatic
+        # numeric-looking Legacy Ecosystem codes (e.g. "004030") — pandas' automatic
         # type inference would otherwise read them as int64 and silently
         # strip leading zeros before any .astype(str) call downstream ever
         # sees the original text, corrupting the exact-length check below.
