@@ -1,10 +1,17 @@
 """
 src/privacy/validate_pseudonymize_order_history.py
 
-Non-critical secondary sanity check on the latest pseudonymized order
-history file: confirms customer names and product descriptions actually
-look pseudonymized, row_hash is complete, and reports (without failing)
-any duplicate row_hash values.
+Secondary sanity check on the latest pseudonymized order history file:
+confirms customer names and product descriptions actually look
+pseudonymized, row_hash is complete, and reports (without failing) any
+duplicate row_hash values.
+
+Runs as a critical stage in run_pipeline.py — a failure here stops the
+order_history track (upload never runs for this batch), even though
+data_quality_gate.py independently re-derives most of the same checks.
+That overlap is deliberate belt-and-suspenders on the fields this whole
+pipeline exists to protect, not redundant noise — a second, independent
+check failing is itself signal.
 
 This does not write any output file other than an optional duplicate-row
 export for inspection.

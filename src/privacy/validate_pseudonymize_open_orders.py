@@ -1,8 +1,9 @@
 """
 src/privacy/validate_pseudonymize_open_orders.py
 
-Non-critical secondary sanity check on the latest pseudonymized open
-orders file — mirrors validate_pseudonymize_order_history.py.
+Secondary sanity check on the latest pseudonymized open orders file —
+mirrors validate_pseudonymize_order_history.py, including running as a
+critical stage in run_pipeline.py (see that file's docstring for why).
 """
 
 from __future__ import annotations

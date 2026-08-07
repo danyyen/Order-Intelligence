@@ -10,13 +10,12 @@ its filesystem is case-insensitive; it would break on Linux/S3).
 
 from pathlib import Path
 
-PROJECT_ROOT = Path(r"C:\Users\ND\Desktop\Project No_Retreat")
-
-if not PROJECT_ROOT.exists():
-    raise FileNotFoundError(
-        f"PROJECT_ROOT does not exist on this machine: {PROJECT_ROOT}. "
-        "Update config/paths.py to point at the correct project location."
-    )
+# Resolve relative to this file's own location, not a hardcoded
+# machine-specific path — every other script in this repo already
+# bootstraps PROJECT_ROOT this same way (see e.g. run_pipeline.py).
+# config/paths.py lives at <PROJECT_ROOT>/config/paths.py, so the
+# project root is one level up from this file's own directory.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 DATA_DIR = PROJECT_ROOT / "data"
 
