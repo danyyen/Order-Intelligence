@@ -8,28 +8,48 @@ A local-first Python pipeline that builds stable shared identities, pseudonymize
 **Production-scale validation:** ~563K records processed end-to-end in approximately 2 minutes, with 27 automated tests covering ingestion, orchestration, mapping integrity, rollback behaviour, and regression scenarios.
 
 ## Business Flow Infographic
-Legacy ERP
-(Excel exports)
-        │
-        ▼
-Python Pipeline
-(Standardize + Pseudonymize + Validate)
-        │
-        ▼
-Approved S3 Dataset
-        │
-        ▼
-Snowflake (planned)
-        │
-        ▼
-Power BI / ML (planned)
 
-Outputs
+<p align="center">
+  <img src="logos%27/erp.jpg" alt="Legacy ERP" width="180">
+  <br>
+  <strong>Legacy ERP — Excel Exports</strong>
+  <br><br>
+  ↓
+  <br><br>
 
-✓ Clean data
-✓ Privacy-safe
-✓ Shared identities
-✓ Analytics-ready
+  <img src="logos%27/python_pipeline.jpg" alt="Python Data Pipeline" width="180">
+  <br>
+  <strong>Python Pipeline</strong>
+  <br>
+  Standardize • Pseudonymize • Validate
+  <br><br>
+  ↓
+  <br><br>
+
+  <img src="logos%27/S3.jpg" alt="Amazon S3" width="180">
+  <br>
+  <strong>Approved Amazon S3 Dataset</strong>
+  <br><br>
+  ↓
+  <br><br>
+
+  <img src="logos%27/snowflake.jpg" alt="Snowflake" width="180">
+  <br>
+  <strong>Snowflake — Planned</strong>
+  <br><br>
+  ↓
+</p>
+
+<p align="center">
+  <img src="logos%27/BI_viz.jpg" alt="Power BI" width="30%">
+  <img src="logos%27/ML.jpg" alt="Machine Learning" width="30%">
+  <img src="logos%27/gen_AI.jpg" alt="Generative AI" width="30%">
+</p>
+
+<p align="center">
+  <strong>Power BI / Machine Learning / Generative AI — Planned</strong>
+</p>
+
 
 ## Highlights
 
