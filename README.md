@@ -1,15 +1,52 @@
+
 # Order Intelligence Pipeline
 
-A local-first Python pipeline that ingests legacy ERP Excel exports, builds stable shared identities for customers and products, pseudonymizes sensitive fields, validates each dataset, and lands approved batches in Amazon S3. Snowflake, dbt, BI, and ML are planned downstream layers.
+Turns raw legacy ERP exports containing sensitive customer, product, and employee data into privacy-safe, analytics-ready datasets — built because the source system has no API, direct database connection, or automated extraction.
 
-#### Highlights
+A local-first Python pipeline that builds stable shared identities, pseudonymizes sensitive fields, validates order history, open orders, and inventory, and lands only approved batches in Amazon S3.
 
-- Three complete dataset tracks: order history, open orders, and inventory
-- Stable customer, product, and SKU identities shared across all three datasets
-- Dataset-level failure isolation: one failed dataset does not stop the other independent tracks
-- Local privacy boundary: direct identifiers are removed before any upload
-- Automated orchestration, ingestion, mapping-integrity, and regression tests
-- No confidential customer or business data is committed to the repository
+**Production-scale validation:** ~563K records processed end-to-end in approximately 2 minutes, with 27 automated tests covering ingestion, orchestration, mapping integrity, rollback behaviour, and regression scenarios.
+
+## Business Flow Infographic
+Legacy ERP
+(Excel exports)
+        │
+        ▼
+Python Pipeline
+(Standardize + Pseudonymize + Validate)
+        │
+        ▼
+Approved S3 Dataset
+        │
+        ▼
+Snowflake (planned)
+        │
+        ▼
+Power BI / ML (planned)
+
+Outputs
+
+✓ Clean data
+✓ Privacy-safe
+✓ Shared identities
+✓ Analytics-ready
+
+## Highlights
+
+- **3 complete data pipelines** — order history, open orders, and inventory
+- **~563K records processed** in the largest production-scale validation run
+- **27 automated tests** covering orchestration, ingestion idempotency, mapping integrity, rollback behavior, and regression scenarios
+- **Stable shared identities** for customers, products, and SKUs across datasets and pipeline runs
+- **Privacy before cloud** — direct customer, product, and employee identifiers are removed before S3 upload
+- **Failure-isolated dataset tracks** — one dataset failure does not prevent independent datasets from completing
+- **Quality-authorized S3 landing** — failed or mismatched quality reports cannot authorize an upload
+- **No confidential business data** committed to the repository
+
+### Pipeline Run
+
+
+
+
 
 **What's in this repo:** pipeline code, configuration, documentation, automated tests, and screenshots from a real run. Runtime data, identity mappings, logs, Excel exports, CSV outputs, quality reports, and credentials are excluded by `.gitignore`.
 
@@ -42,7 +79,9 @@ This repository is the landing-zone layer: ingest reliably, standardize inconsis
 
 For the reasoning behind specific design choices, known tradeoffs, and issues discovered during development, see **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 
-## Tested Against
+## Production-Scale Validation
+
+The pipeline was validated end-to-end against real operational data volumes during development.
 
 | Dataset | Largest development run |
 |---|---:|
@@ -52,15 +91,27 @@ For the reasoning behind specific design choices, known tradeoffs, and issues di
 | Products | 947 |
 | Customers | 1,770 |
 
-These figures describe the largest real dataset processed during development. That production data is not included in this repository. The automated tests create temporary synthetic fixtures at runtime.
+The full run processed approximately **563,000 operational records in 124.07 seconds**, including pseudonymization, validation, quality gating, and Amazon S3 delivery.
 
-## Proof of a real run
+Production data is not included in this repository. Automated tests create temporary synthetic fixtures at runtime.
+
+
+## Proof of a Real Run
 
 ![Full pipeline run](docs/images/result_output.jpg)
+
+*Production-scale execution of the complete pipeline across order history, open orders, and inventory.*
+
 ![Before and after comparison](docs/images/column_comparison_before_and_after.jpg)
+
+*Raw source fields compared with the pseudonymized output produced by the pipeline.*
+
 ![S3 landing result](docs/images/s3_landing.jpg)
 
+*Quality-approved pseudonymized datasets and matching quality reports landed in Amazon S3.*
+
 More screenshots, including the stage status table, quality report, source exports, and before/after column comparison, are available in [docs/images](docs/images).
+
 
 ## Architecture
 
@@ -130,14 +181,6 @@ Worth being precise about what “pseudonymized” means here:
 - This is pseudonymization, not anonymization. Dates, routes, quantities, amounts, order numbers, warehouse positions, and other operational context can still be sensitive.
 - Order number and purchase order number remain unchanged because they serve as operational transaction identifiers in this environment. A different privacy policy may require pseudonymizing them too.
 
-#### Real production-sized run
-
-- Processed approximately **553,000** order-history rows
-- Processed approximately **4,500** open-order rows
-- Processed approximately **5,800** inventory rows
-- Completed in approximately **2 minutes (124.07 seconds)**
-- Deterministically pseudonymized direct customer and product identifiers
-- Uploaded approved data and its matching quality reports to Amazon S3
 
 ## Quality gates
 
