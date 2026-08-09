@@ -21,7 +21,7 @@ A local-first Python pipeline that builds stable shared identities, pseudonymize
   <br>
   <strong>Python Pipeline</strong>
   <br>
-  Standardize • Pseudonymize • Validate
+  Ingest • Standardize • Pseudonymize • Validate
   <br><br>
   ↓
   <br><br>
