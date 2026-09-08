@@ -1,11 +1,16 @@
 
-# Order Intelligence Pipeline
+# Order Intelligence System
 
 Turns raw legacy ERP exports containing sensitive customer, product, and employee data into privacy-safe, analytics-ready datasets — built because the source system has no API, direct database connection, or automated extraction.
 
 A local-first Python pipeline that builds stable shared identities, pseudonymizes sensitive fields, validates order history, open orders, and inventory, and lands only approved batches in Amazon S3.
 
 **Production-scale validation:** ~563K records processed end-to-end in approximately 2 minutes, with 27 automated tests covering ingestion, orchestration, mapping integrity, rollback behaviour, and regression scenarios.
+
+## Story Behind the Project
+High-volume supply chain operations often manage customer commitments using fragmented legacy system reports. Historical orders show what already happened, open orders show current commitments, and inventory snapshots show current availability—but none independently answers the question management actually needs answered:
+**Which customer commitments are at risk, why, and where should operations intervene before service fails?**
+Order Intelligence transforms these fragmented operational datasets into a governed analytics layer for workload visibility, inventory risk, capacity planning and proactive customer-service decision support.
 
 ## Business Flow Infographic
 
@@ -335,6 +340,9 @@ docs/
 - Order history, open orders, and inventory can be exported at different times, so one pipeline run is not a perfectly synchronized source snapshot.
 - Multi-file ingestion commits are fail-closed and roll back ordinary write failures, but they are not database transactions. An abrupt machine or process termination during the small commit window can require manual inspection and a forced retry.
 - Automated tests run locally, but CI has not yet been configured.
+
+## Disclaimer: 
+Inspired by operational challenges common to high-volume distribution environments. The public implementation uses synthetic data and contains no employer or customer confidential information.
 
 ## What's next
 
